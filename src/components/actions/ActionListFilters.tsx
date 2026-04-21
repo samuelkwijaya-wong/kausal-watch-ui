@@ -1246,17 +1246,29 @@ ActionListFilters.constructFilters = (opts: ConstructFiltersOpts) => {
           }
           filters.push(createAttributeTypeFilter(block, t));
           break;
-        case 'ActionImplementationPhaseFilterBlock':
+        case 'ActionImplementationPhaseFilterBlock': {
           if (!plan.actionImplementationPhases.length) break;
+          const phaseBlock = block as typeof block & {
+            fieldLabel?: string | null;
+            fieldHelpText?: string | null;
+            showAllLabel?: string | null;
+          };
+          const label = asNonEmptyString(phaseBlock.fieldLabel) ?? t('filter-phase');
+          const helpText =
+            asNonEmptyString(phaseBlock.fieldHelpText) ??
+            t('filter-phase-help', getActionTermContext(plan)) ??
+            '';
+          const showAllLabel =
+            asNonEmptyString(phaseBlock.showAllLabel) ?? t('filter-all-phases');
           const phaseOpts = {
             id: 'phase',
             options: plan.actionImplementationPhases.map((obj) => ({
               id: obj.identifier,
               label: obj.name,
             })),
-            label: t('filter-phase'),
-            helpText: t('filter-phase-help', getActionTermContext(plan)) || '',
-            showAllLabel: t('filter-all-phases'),
+            label,
+            helpText,
+            showAllLabel,
             filterAction: (val: string, act: ActionListAction) => {
               if (act.implementationPhase?.identifier === val) return true;
               return false;
@@ -1270,6 +1282,7 @@ ActionListFilters.constructFilters = (opts: ConstructFiltersOpts) => {
             })
           );
           break;
+        }
         case 'ActionStatusFilterBlock':
           if (!plan.actionStatuses.length) break;
           const statusOpts = {
