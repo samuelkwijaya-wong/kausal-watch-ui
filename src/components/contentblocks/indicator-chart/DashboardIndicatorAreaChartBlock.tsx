@@ -97,7 +97,10 @@ const DashboardIndicatorAreaChartBlock = ({ chartSeries, indicator, dimension }:
   const legendData: LegendComponentOption['data'] = [...areaLegendItems, ...trendLegendItems];
 
   const dataSources = hasDimension ? dimSeries.map((d) => d.raw) : [totalRaw];
-  const { xCategories } = collectAllDates(dataSources, timeResolution);
+  // Include goal dates so the axis reaches the goal year; the trend series is
+  // extended to it, and keys outside xCategories are dropped by ECharts.
+  const goalDates = indicator?.goals?.map((g) => g?.date).filter((d) => d != null) ?? [];
+  const { xCategories } = collectAllDates(dataSources, timeResolution, goalDates);
 
   const series = hasDimension
     ? dimSeries.map((d) => {
@@ -111,6 +114,9 @@ const DashboardIndicatorAreaChartBlock = ({ chartSeries, indicator, dimension }:
           areaStyle: { opacity: 0.9 },
           symbol: 'none' as const,
           data,
+          // Skipped time steps are nulls on the axis; draw through them so the
+          // band (and any stack above it) doesn't collapse to the baseline.
+          connectNulls: true,
           itemStyle: { color: d.color },
           lineStyle: { color: d.color },
           emphasis: { focus: 'series' },
@@ -129,6 +135,7 @@ const DashboardIndicatorAreaChartBlock = ({ chartSeries, indicator, dimension }:
               (key) => [key, dataMap.get(key) ?? null] as [string, number | null]
             );
           })(),
+          connectNulls: true,
           itemStyle: { color: totalDef.color },
           lineStyle: { color: totalDef.color },
           emphasis: { focus: 'series' },
@@ -170,15 +177,8 @@ const DashboardIndicatorAreaChartBlock = ({ chartSeries, indicator, dimension }:
       boundaryGap: false,
       axisLabel: {
         color: theme.textColor.primary,
-        formatter: (value: string) => {
-          if (timeResolution === 'YEAR') {
-            return String(value);
-          } else if (timeResolution === 'MONTH') {
-            return String(value);
-          } else {
-            return value;
-          }
-        },
+        hideOverlap: true,
+        rotate: xCategories.length > 12 ? 45 : 0,
       },
     },
     yAxis: buildYAxisConfig(

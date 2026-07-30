@@ -152,7 +152,11 @@ const DashboardIndicatorBarChartBlock = ({ chartSeries, indicator, dimension, ba
     xAxis: {
       type: 'category',
       data: xCategories,
-      axisLabel: { color: theme.textColor.primary },
+      axisLabel: {
+        color: theme.textColor.primary,
+        hideOverlap: true,
+        rotate: xCategories.length > (isCompact ? 8 : 12) ? 45 : 0,
+      },
     },
     yAxis: buildYAxisConfig(
       indicator?.unit?.name ?? '',

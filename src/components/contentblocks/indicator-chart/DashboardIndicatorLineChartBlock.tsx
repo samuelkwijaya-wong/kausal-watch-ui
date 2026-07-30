@@ -89,7 +89,11 @@ const DashboardIndicatorLineChartBlock = ({
         showLine: true,
         showSymbol: true,
         symbolSize: 8,
-        smooth: raw.length > 1,
+        // Skipped time steps are nulls on the axis; draw through them rather
+        // than breaking the line, and keep it straight so the missing period
+        // isn't given an invented curve.
+        connectNulls: true,
+        smooth: false,
         lineStyle: { width, color },
         itemStyle: { color },
       };
@@ -152,7 +156,11 @@ const DashboardIndicatorLineChartBlock = ({
       type: 'category',
       data: xCategories,
       boundaryGap: false,
-      axisLabel: { color: theme.textColor.primary },
+      axisLabel: {
+        color: theme.textColor.primary,
+        hideOverlap: true,
+        rotate: xCategories.length > 12 ? 45 : 0,
+      },
     },
     yAxis: buildYAxisConfig(
       indicator?.unit?.name ?? '',

@@ -48,6 +48,66 @@ function getTimeKeyForSorting(key: string, timeResolution?: string | null): numb
   }
 }
 
+/**
+ * Inverse of getTimeKeyForSorting: turns a sort index back into a time key.
+ *
+ * Branches on timeResolution exactly as getTimeKeyForSorting does — including
+ * not defaulting to YEAR — so that the two stay in step for any input.
+ */
+function timeKeyFromSortIndex(index: number, timeResolution?: string | null): string {
+  if (timeResolution === 'YEAR') {
+    return String(index);
+  } else if (timeResolution === 'MONTH') {
+    const year = Math.floor(index / 12);
+    const month = (index % 12) + 1;
+    return `${year}-${String(month).padStart(2, '0')}`;
+  } else {
+    return new Date(index).toISOString().split('T')[0];
+  }
+}
+
+/** Upper bound on generated categories; beyond this we keep the sparse axis. */
+const MAX_DENSE_TIME_STEPS = 600;
+
+/**
+ * Fills in the time steps missing between the first and last key so that the
+ * axis is evenly spaced in time. A skipped period becomes a tick with no data
+ * point, instead of vanishing and making the surrounding slope look shallower
+ * than it is.
+ *
+ * DAY resolution is returned untouched — filling in every calendar day would
+ * explode the category count for no real benefit.
+ *
+ * @param sortedKeys - Time keys in chronological order, as produced by formatDateKey
+ * @param timeResolution - The indicator's time resolution
+ */
+export function densifyTimeKeys(sortedKeys: string[], timeResolution?: string | null): string[] {
+  const resolution = String(timeResolution || 'YEAR').toUpperCase();
+  if (resolution !== 'YEAR' && resolution !== 'MONTH') {
+    return sortedKeys;
+  }
+  if (sortedKeys.length < 2) {
+    return sortedKeys;
+  }
+
+  const indices = sortedKeys.map((key) => getTimeKeyForSorting(key, resolution));
+  if (indices.some((index) => !Number.isFinite(index))) {
+    return sortedKeys;
+  }
+
+  const first = indices[0];
+  const stepCount = indices[indices.length - 1] - first + 1;
+  if (stepCount <= sortedKeys.length) {
+    // Already dense (or unsorted input we shouldn't second-guess)
+    return sortedKeys;
+  }
+  if (stepCount > MAX_DENSE_TIME_STEPS) {
+    return sortedKeys;
+  }
+
+  return Array.from({ length: stepCount }, (_, i) => timeKeyFromSortIndex(first + i, resolution));
+}
+
 export function buildDimSeries(
   chartSeries: LineChartBlock['chartSeries'],
   palette: string[],
@@ -177,17 +237,9 @@ export function buildTrendSeries(
   const model = linearRegression(numericData);
   const predictedValues = predictedTimes.map((timeKey) => model.m * timeKey + model.b);
 
-  const predictedKeys = predictedTimes.map((timeKey) => {
-    if (timeResolution === 'YEAR') {
-      return String(timeKey);
-    } else if (timeResolution === 'MONTH') {
-      const year = Math.floor(timeKey / 12);
-      const month = (timeKey % 12) + 1;
-      return `${year}-${String(month).padStart(2, '0')}`;
-    } else {
-      return new Date(timeKey).toISOString().split('T')[0];
-    }
-  });
+  const predictedKeys = predictedTimes.map((timeKey) =>
+    timeKeyFromSortIndex(timeKey, timeResolution)
+  );
 
   return regData.length >= 2 && (indicator?.showTrendline ?? true)
     ? [
@@ -250,6 +302,11 @@ export function buildTooltipFormatter(
 
         return `${p.marker} ${label}: ${value} ${unit}`;
       });
+
+    // Skipped time steps have a tick but no data; suppress the empty tooltip.
+    if (!rows.length) {
+      return '';
+    }
 
     return `<strong>${formattedTime}</strong><br/>${rows.join('<br/>')}`;
   };
@@ -370,7 +427,13 @@ export function collectAllDates(
   );
 
   const allDates = sortDates(Array.from(normalizedDateSet));
-  const xCategories = allDates.map((d) => formatDateForDisplay(d, timeResolution));
+  // Deduplicate in display space: distinct normalized dates can format to the
+  // same key (e.g. a value on 2030-12-01 and a goal on 2030-12-31 at MONTH
+  // resolution), which would otherwise produce a repeated category.
+  const displayKeys = Array.from(
+    new Set(allDates.map((d) => formatDateForDisplay(d, timeResolution)))
+  );
+  const xCategories = densifyTimeKeys(displayKeys, timeResolution);
 
   return { allDates, xCategories };
 }
